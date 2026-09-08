@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mlops-postgres
+    environment:
+      POSTGRES_DB: mlops_sentinel
+      POSTGRES_USER: mlops_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_locally}
+    ports:
+      - "5433:5432"
+    volumes:
+      - mlops_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlops_user -d mlops_sentinel"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    container_name: mlops-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+
+  app:
+    build: .
+    container_name: mlops-app
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://mlops_user:${DB_PASSWORD:-change_me_locally}@postgres:5432/mlops_sentinel
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: fraud-detector
+      DRIFT_PSI_THRESHOLD: 0.2
+      RETRAINING_CHECK_INTERVAL_MINUTES: 60
+      AB_TEST_CHALLENGER_TRAFFIC_PERCENT: 20
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
+volumes:
+  mlops_pgdata:
+  mlflow_data:
