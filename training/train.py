@@ -28,6 +28,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from data.prepare_dataset import FEATURE_NAMES, generate_dataset
+from dotenv import load_dotenv
+load_dotenv()
 
 MODEL_NAME = os.getenv("MODEL_NAME", "fraud-detector")
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -52,9 +54,6 @@ def train_model(as_challenger: bool) -> None:
         X, y, test_size=0.2, stratify=y, random_state=42
     )
 
-    # Champion is deliberately simpler (LogisticRegression); challenger uses
-    # a RandomForest — different enough that A/B comparison is meaningful,
-    # not just the same model retrained on the same data.
     if as_challenger:
         model = Pipeline([
             ("scaler", StandardScaler()),
@@ -68,7 +67,7 @@ def train_model(as_challenger: bool) -> None:
         ])
         model_type = "logistic_regression_champion"
 
-    with mlflow.start_run(run_name=model_type):
+    with mlflow.start_run(run_name=model_type) as run:
         model.fit(X_train, y_train)
 
         y_pred = model.predict(X_test)
@@ -86,25 +85,27 @@ def train_model(as_challenger: bool) -> None:
         mlflow.log_param("training_rows", len(X_train))
         mlflow.log_metrics(metrics)
 
-        model_info = mlflow.sklearn.log_model(
+        mlflow.sklearn.log_model(
             model, artifact_path="model", registered_model_name=MODEL_NAME
         )
 
         print(f"Trained {model_type}")
         print(f"Metrics: {metrics}")
-        print(f"Registered as {MODEL_NAME}, version info: {model_info.model_uri}")
 
-        _assign_alias(model_info, as_challenger)
+        _assign_alias(run.info.run_id, as_challenger)
 
 
-def _assign_alias(model_info, as_challenger: bool) -> None:
+def _assign_alias(run_id: str, as_challenger: bool) -> None:
     client = MlflowClient()
-    # model_info.model_uri looks like "models:/fraud-detector/<version>"
-    version = model_info.model_uri.split("/")[-1]
+    versions = client.search_model_versions(f"run_id='{run_id}'")
+
+    if not versions:
+        raise RuntimeError(f"No registered model version found for run_id {run_id}")
+
+    version = versions[0].version
     alias = "challenger" if as_challenger else "champion"
     client.set_registered_model_alias(MODEL_NAME, alias, version)
     print(f"Set alias '{alias}' -> version {version}")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

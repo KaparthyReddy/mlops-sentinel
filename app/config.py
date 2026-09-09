@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     drift_psi_threshold: float = 0.2
     retraining_check_interval_minutes: int = 60
     ab_test_challenger_traffic_percent: int = 20
+    app_port: int = 8000
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()

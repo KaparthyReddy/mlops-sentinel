@@ -10,6 +10,7 @@ services:
       - "5433:5432"
     volumes:
       - mlops_pgdata:/var/lib/postgresql/data
+      - ./app/db/schema.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mlops_user -d mlops_sentinel"]
       interval: 5s
@@ -20,7 +21,7 @@ services:
     image: ghcr.io/mlflow/mlflow:v2.16.2
     container_name: mlops-mlflow
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
       - mlflow_data:/mlflow
     command: >
@@ -28,7 +29,9 @@ services:
       --host 0.0.0.0
       --port 5000
       --backend-store-uri sqlite:///mlflow/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
+      --default-artifact-root mlflow-artifacts:/
 
   app:
     build: .
